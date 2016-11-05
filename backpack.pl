@@ -3,14 +3,15 @@ use strict;
 use warnings FATAL=>'all';
 
 use POSIX qw(strftime);
+use Sys::Hostname;
 
 
 ########################################################################
 # WHAT IS THAT?
 #
-# The basic script to make backups!
+# The basic script to synchronize data and make backup!
 
-# VERSION: Fri Apr 24 22:10:09 CEST 2015
+# VERSION: Sun Jan 10 16:21:32 CET 2016
 ########################################################################
 
 
@@ -19,156 +20,169 @@ use POSIX qw(strftime);
 # Global variables
 ########################################################################
 
-# list of backups available to the user; the format is
-# BU_NAME => { source => SOURCE, target => TARGET }
-my %DATA = ();
+# BPD dir
+my $BPD_DIR = '/home/nobackup/BPD';
 
-# just a shorthand to use only in the completion of the %DATA hash
-my $LBACKUP = '/mnt/removable/lbackup';
+# just a shorthand to use only in the completion of @CHOICES
+my $REMOTE_DIR = '/mnt/removable/backpack';
+# log file
+my $LOG_FILE = "$REMOTE_DIR/LOG";
 
-# bruno's backup and restore
+# list of choices available to the user; the format is
+# [ { name => NAME_TO_BE_SHOWN,
+#     source => SOURCE_DIR,
+#     target => TARGET_DIR,
+#     local_to_remote => BOOLEAN,
+#     bpd => BOOLEAN }, # if this is false or if the key doesn't
+#                       # exist, the script asks the user
+#   { ... },
+#   ...
+# ]
+my @CHOICES = (
 
-   $DATA{bruno} = { source => "/home/bruno",
-                    target => "$LBACKUP",
-                    bpd => 1,
-                    is_restoration => '',
-                    priority => 1 };
+   { name => "bruno",
+     source => "/home/bruno",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => 1 },
 
-   $DATA{bruno_back} = { source => "$LBACKUP/bruno",
-                         target => "/home",
-                         bpd => 1,
-                         is_restoration => 1,
-                         priority => 2 };
-
-   $DATA{general} =        { source => "/home/general",
-                             target => "$LBACKUP",
-                             bpd => 1,
-                             is_restoration => '',
-                             priority => 3 };
-
-   $DATA{general_back} =        { source => "$LBACKUP/general",
-                                  target => "/home",
-                                  bpd => 1,
-                                  is_restoration => 1,
-                                  priority => 4 };
-
-   # library
-
-   $DATA{working_bib} = { source => "/home/library/01_WORKING",
-                          target => "$LBACKUP/library",
-                          bpd => '',
-                          is_restoration => '',
-                          priority => 5 };
-
-   $DATA{working_bib_back} =  { source => "$LBACKUP/library/01_WORKING",
-                                target => "/home/library",
-                                bpd => '',
-                                is_restoration => 1,
-                                priority => 6 };
-
-   $DATA{library} =       { source => "/home/library",
-                            target => "$LBACKUP",
-                            bpd => '',
-                            is_restoration => '',
-                            priority => 7 };
-
-#   $DATA{library_back} =   { source => "$LBACKUP/library",
-#                             target => "/home",
-#                             bpd => '',
-#                             is_restoration => 1,
-#                             priority => 8 };
-
-# storage backup
-
-   #if (-f '/root/ldlc') {
-      $DATA{storage} = { source => "/mnt/storage",
-                         target => "$LBACKUP/more",
-                         is_restoration => '',
-                         bpd => '',
-                         priority => 9 };
-   #}
+   { name => "bruno",
+     source => "$REMOTE_DIR/bruno",
+     target => "/home",
+     local_to_remote => '',
+     bpd => 1 },
 
 
-# test
+   { name => "storeroom",
+     source => "/home/storeroom",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => 1 },
 
-   #$DATA{test} = { source => "/home/bruno/scripts/newbackpack/testing/source_test",
-   #                target => "/home/bruno/scripts/newbackpack/testing/lbackup_test",
-   #                is_restoration => '',
-   #                bpd => '',
-   #                priority => 100 };
-   #$DATA{test_back} = { source => "/home/bruno/scripts/newbackpack/testing/lbackup_test/source_test",
-   #                     target => "/home/bruno/scripts/newbackpack/testing",
-   #                     is_restoration => 1,
-   #                     bpd => '',
-   #                     priority => 101 };
-
-########################################################################
-# Ask the user which backup to use.  Return the name of the backup
-# (one of the keys of %DATA).
-########################################################################
-
-sub ask_which_backup {
-
-   my $c = 1;
-   my %choices = map{ $c++, $_ }
-                 sort { $DATA{$a}->{priority} <=> $DATA{$b}->{priority} }
-                 keys %DATA;
-
-   print "List of backups/synchros:\n";
-   for (sort { $a <=> $b } keys %choices) {
-      printf " \033[%s;1m- %02d: %s (%s --> %s)\033[0m\n",
-            $DATA{$choices{$_}}->{is_restoration} ? '31' : '32',
-            $_, $choices{$_},
-            $DATA{$choices{$_}}->{source},
-            $DATA{$choices{$_}}->{target};
-   }
-
-   print "Your choice (one of the leading numbers): ";
-   my $nb = <STDIN>; chomp $nb;
-
-   die "$0: *** '$nb' is not valid ***\n" unless exists $choices{$nb};
-
-   return $choices{$nb};
-
-}
+   { name => "storeroom",
+     source => "$REMOTE_DIR/storeroom",
+     target => "/home",
+     local_to_remote => '',
+     bpd => 1 },
 
 
-########################################################################
-# Ask the user for confirmation.  Return TRUE if the user want to
-# continue, FALSE otherwise.
-########################################################################
+   { name => "TODO",
+     source => "/home/TODO",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => 1 },
 
-sub ask_for_confirmation {
+   { name => "TODO",
+     source => "$REMOTE_DIR/TODO",
+     target => "/home",
+     local_to_remote => '',
+     bpd => 1 },
 
-   LOOP: {
-      print "Do you want to continue [y/n]? ";
-      my $buf = <STDIN>;
-      if ($buf =~ m/^\s*+y\s*+$/i) {
-         print "Let's go!\n";
-         return 1;
-      } elsif ($buf =~ m/^\s*+n\s*+$/i) {
-         print "Quit on user request.\n";
-         return '';
-      }
-   }
 
-}
+   { name => "papps",
+     source => "/home/papps",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
 
-########################################################################
-# Ask the user for confirmation.  Return TRUE if the user want to
-# continue, FALSE otherwise.
-########################################################################
+   { name => "papps",
+     source => "$REMOTE_DIR/papps",
+     target => "/home",
+     local_to_remote => '',
+     bpd => '' },
 
-sub ask_for_confirmation_for_direction {
 
-   my $is_restoration = shift;
-   my $source = shift;
-   my $target = shift;
+   { name => "blib",
+     source => "/home/blib",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
 
-   if ($is_restoration) {
+   { name => "blib",
+     source => "$REMOTE_DIR/blib",
+     target => "/home",
+     local_to_remote => '',
+     bpd => '' },
 
-      print <<"END";
-\033[31;1mSOURCE: $source
+
+   { name => "pendingblib",
+     source => "/home/pendingblib",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
+
+   { name => "pendingblib",
+     source => "$REMOTE_DIR/pendingblib",
+     target => "/home",
+     local_to_remote => '',
+     bpd => '' },
+
+
+   { name => "playground",
+     source => "/home/playground",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
+
+   { name => "playground",
+     source => "$REMOTE_DIR/playground",
+     target => "/home",
+     local_to_remote => '',
+     bpd => '' },
+
+
+   { name => "STORAGE: big 01 important",
+     source => "/media/bruno/storage/big_01_important",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
+
+   { name => "STORAGE: big 01 important",
+     source => "$REMOTE_DIR/big_01_important",
+     target => "/media/bruno/storage",
+     local_to_remote => '',
+     bpd => '' },
+
+   { name => "STORAGE: big 02 useful",
+     source => "/media/bruno/storage/big_02_useful",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
+
+   { name => "STORAGE: big 02 useful",
+     source => "$REMOTE_DIR/big_02_useful",
+     target => "/media/bruno/storage",
+     local_to_remote => '',
+     bpd => '' },
+
+   { name => "STORAGE: big 03 less useful",
+     source => "/media/bruno/storage/big_03_less_useful",
+     target => $REMOTE_DIR,
+     local_to_remote => 1,
+     bpd => '' },
+
+   { name => "STORAGE: big 03 less useful",
+     source => "$REMOTE_DIR/big_03_less_useful",
+     target => "/media/bruno/storage",
+     local_to_remote => '',
+     bpd => '' },
+
+
+   { name => "TEST",
+     source => "/home/bruno/scripts/newbackpack/testing/test_local",
+     target => "/home/bruno/scripts/newbackpack/testing/test_remote",
+     local_to_remote => 1,
+     bpd => 1 },
+
+   { name => "TEST",
+     source => "/home/bruno/scripts/newbackpack/testing/test_remote",
+     target => "/home/bruno/scripts/newbackpack/testing/test_local",
+     local_to_remote => '' },
+
+);
+
+
+my $ASCII_ART_TO_LOCAL =<<"END";
                                              ._________________.
   .-----------------.                        | ._____________. |
   |  .-----------.  |                        | |root #       | |
@@ -182,25 +196,9 @@ sub ask_for_confirmation_for_direction {
   \\____|_______|_|__|             |/        |::: ____           |
                                             |    ~~~~ [CD-ROM]  |
                                             !___________________!
-TARGET: $target\033[0m
 END
 
-   LOOP: {
-      print "This is a restoration! Type either 'restore to computer' or 'quit': ";
-      my $buf = <STDIN>;
-      if ($buf =~ m/^\s*+restore to computer\s*+$/i) {
-         print "Let's go!\n";
-         return 1;
-      } elsif ($buf =~ m/^\s*+quit\s*+$/i) {
-         print "Quit on user request.\n";
-         return '';
-      }
-   }
-
-   } else {
-
-      print <<"END";
-\033[32;1mSOURCE: $source
+my $ASCII_ART_TO_REMOTE = <<"END";
    ._________________.                        
    | ._____________. |                        .-----------------.
    | |root #       | |                        |  .-----------.  |
@@ -214,37 +212,160 @@ END
   |::: ____           |             |/        \\____|_______|_|__|
   |    ~~~~ [CD-ROM]  |                       
   !___________________!                       
-TARGET: $target\033[0m
 END
 
-      LOOP: {
-         print "This is a backup. Do you want to continue [y/n]? ";
-         my $buf = <STDIN>;
-         if ($buf =~ m/^\s*+y\s*+$/i) {
-            print "Let's go!\n";
-            return 1;
-         } elsif ($buf =~ m/^\s*+n\s*+$/i) {
-            print "Quit on user request.\n";
-            return '';
-         }
-      }
 
+########################################################################
+# Ask the input data to the user (source and target directories, BPD).
+# Return an array: (SOURCE, TARGET, BPD).
+#
+# Check that the source and target exist.  Ask confirmation.
+#
+# Return FALSE if the user wants to quit.
+########################################################################
+
+sub ask_data_to_user {
+
+   my @choices = @_;
+
+   my $buf;
+
+   # choice of direction
+
+   my $to_remote;
+   while (1) {
+      print "Choose the direction:\n"
+         ."- 0: to remote directory (backup)\n"
+         ."- 1: to local directory (restoration)\n"
+         ."Choice [0/1/quit]? ";
+      $buf = <STDIN>;
+      if ($buf =~ m/^\s*+0\s*+$/) {
+         print "Choice made: to remote directory.\n";
+         $to_remote = 1;
+         last;
+      } elsif ($buf =~ m/^\s*+1\s*+$/) {
+         print "Choice made: to local directory.\n";
+         $to_remote = "";
+         last;
+      } elsif ($buf =~ m/^\s*+quit\s*+$/i) {
+         print "Aborted on user request.\n";
+         return undef;
+      }
+      print "Invalid answer.  Try again.\n";
    }
+
+   # choice of source and target dirs
+
+   @choices =
+      map { -e $_->{source} ? $_ : () }
+      map { (($_->{local_to_remote} and $to_remote)
+         or (!$_->{local_to_remote} and !$to_remote)) ? $_ : () } @choices;
+
+   die "$0: *** no source directory available ***\n" unless @choices;
+
+   my $source;
+   my $target;
+   my $bpd;
+   while (1) {
+      my $i = 0;
+      print "Choose the directory:\n";
+      for (@choices) {
+         print " - $i: $_->{name}\n";
+         $i++;
+      }
+      print "Choice (one of the leading number, or 'quit')? ";
+      $buf = <STDIN>;
+      if ($buf =~ m/^\s*+(\d++)\s*+$/ and $1 >= 0 and $1 < scalar @choices) {
+         $source = $choices[$1]->{source};
+         $target = $choices[$1]->{target};
+         if (exists $choices[$1]->{bpd}) {
+            $bpd = $choices[$1]->{bpd};
+         } else {
+            $bpd = '';
+         }
+         last;
+      } elsif ($buf =~ m/^\s*+quit\s*+$/i) {
+         print "Aborted on user request.\n";
+         return undef;
+      }
+      print "Invalid answer.  Try again.\n";
+   }
+
+   die "$0: *** source directory '$source' doesn't exist ***\n"
+      unless -d-r-w-x $source;
+
+   die "$0: *** target directory '$target' doesn't exist ***\n"
+      unless -d-r-w-x $target;
+
+   # ask confirmation
+
+   while (1) {
+      my $color = $to_remote ? '32' : '31';
+      print "Choice made:\n"
+         ."\033[$color;1mSource:\n$source\n"
+         .($to_remote ? $ASCII_ART_TO_REMOTE : $ASCII_ART_TO_LOCAL)
+         .sprintf("% 65s\n", "Target:")
+         .sprintf("% 65s\033[0m\n", $target);
+      if ($to_remote) {
+         print "Is this correct [y/n]? ";
+      } else {
+         print "Type 'erase local data' to continue (or 'quit'): ";
+      }
+      $buf = <STDIN>;
+      if ($to_remote and $buf =~ m/^\s*+y\s*+$/) {
+         last;
+      } elsif ($to_remote and $buf =~ m/^\s*+n\s*+$/i) {
+         print "Aborted on user request.\n";
+         return undef;
+      } elsif (!$to_remote and $buf =~ m/^\s*+quit\s*+$/i) {
+         print "Aborted on user request.\n";
+         return undef;
+      } elsif (!$to_remote and $buf =~ m/^\s*+erase\s++local\s++data\s*+$/i) {
+         last;
+      }
+      print "Invalid answer.  Try again.\n";
+   }
+
+   # ask for BPD
+
+   unless ($bpd) {
+      while (1) {
+         print "Do you want to use BPD [y/n/quit]? ";
+         $buf = <STDIN>;
+         if ($buf =~ m/^\s*+y\s*+$/) {
+            print "Choice made: use BPD.\n";
+            $bpd = 1;
+            last;
+         } elsif ($buf =~ m/^\s*+n\s*+$/) {
+            print "Choice made: no BPD.\n";
+            $bpd = '';
+            last;
+         } elsif ($buf =~ m/^\s*+quit\s*+$/i) {
+            print "Aborted on user request.\n";
+            return undef;
+         }
+         print "Invalid answer.  Try again.\n";
+      } # while
+   } # unless
+
+   return ($source, $target, $bpd);
 
 }
 
 
 ########################################################################
-# Get rsync() options.
+# Build the rsync options.  Return an array with all the options, to
+# be used with the system() command.
 ########################################################################
 
-sub get_rsync_options {
+sub build_rsync_options {
 
    my $source = shift;
    my $target = shift;
-   my $need_bpd = shift;
+   my $bpd = shift;
+   my $timestamp = shift;
 
-   my @rsync_opts = (
+   my @rsync_options = (
       "--modify-window", "1", # loose comparision of timestamp
       "--recursive", # descend into directories
       "--times", # update timestamps
@@ -253,7 +374,7 @@ sub get_rsync_options {
       "--group", # update group (idem)
       "--links", # copy symlinks as symlinks
       "--devices", # recreate character and block device files (only if run as superuser)
-      "--specials", # recreate special files (socket, fifos (only if run as superuser)
+      "--specials", # recreate special files (socket, fifos (only if run as superuser))
       "--delete", # delete extraneous files from dest dirs (otherwise, these are kept)
       "--human-readable", # output numbers in a human-readable format
       "-v", "-v", # verbose, and more verbose
@@ -261,21 +382,57 @@ sub get_rsync_options {
       "--log-file", "backup.log", # save a log file
    );
 
-   if ($need_bpd) {
-      my $timestamp = strftime("%Y%m%d_%H%M%S", gmtime);
-      my $bpd_dir = "/home/nobackup/BPD/$timestamp/";
-      die "$0: *** BPD dir '$bpd_dir' already exists ***\n" if -e $bpd_dir;
-      push @rsync_opts, '--backup', '--backup-dir', $bpd_dir;
+   if ($bpd) {
+      die "$0: *** BPD directory '$BPD_DIR' doesn't exist ***\n"
+         unless -d-r-w-x $BPD_DIR;
+      my $bpd_dir = sprintf('/home/nobackup/BPD/%s/', $timestamp);
+      die "$0: *** BPD directory '$bpd_dir' already exists ***\n"
+         if -e $bpd_dir;
+      push @rsync_options, '--backup', '--backup-dir', $bpd_dir;
    }
 
-   (my $dir_with_no_parents = $source) =~ s{^([^/]*+/)*+}{};
-   push @rsync_opts, '--exclude', "/$dir_with_no_parents/.*";
+   # dirname = dir name without the parent dirs
+   (my $dirname = $source) =~ s{^([^/]*+/)*+}{};
+   push @rsync_options, '--exclude', "/$dirname/.*";
 
-   push @rsync_opts, $source, $target;
+   push @rsync_options, $source, $target;
 
-   return @rsync_opts;
+   return @rsync_options;
 
 }
+
+
+########################################################################
+# print log
+########################################################################
+
+sub write_log {
+
+   my $file = shift;
+   my $timestamp = shift; # if undef, just write 'ok'
+   my $source = shift;
+   my $target = shift;
+   my $msg = shift;
+   my @options = @_;
+
+   open my $fh, ">>", $file or die "$0: *** can't open $file ***\n";
+
+   if ($timestamp) {
+      #print "time: $timestamp\n";
+      #print "msg: $msg\n";
+      #print "src: $source\n";
+      #print "targ: $target\n";
+      #print "opt: @options\n";
+      my $host = hostname();
+      print $fh "$timestamp ($host, $msg): $source --> $target (@options)\n";
+   } else {
+      print $fh "... ok\n";
+   }
+
+   close $fh or die "$0: *** can't close $file ***\n";
+
+}
+
 
 
 ########################################################################
@@ -285,56 +442,58 @@ sub get_rsync_options {
 sub main {
 
    # only root can do that!
-
-   die "$0: *** you must be root ***\n"
-      unless $ENV{LOGNAME} eq 'root' or exists $DATA{test};
-
-   # ask the backup to be used
-
-   my $backup_name = ask_which_backup();
-
-   my $source = $DATA{$backup_name}->{source};
-   my $target = $DATA{$backup_name}->{target};
-
-   die "$0: *** source '$source' doesn't exist ***\n" unless -d-r-w-x $source;
-   die "$0: *** target '$target' doesn't exist ***\n" unless -d-r-w-x $target;
-
-   # ask confirmation for restoration
-
-   if (exists $DATA{$backup_name}->{is_restoration}) {
-      return unless ask_for_confirmation_for_direction(
-         $DATA{$backup_name}->{is_restoration},
-         $source, $target);
+   my @choices;
+   if ($ENV{LOGNAME} eq 'root') {
+      @choices = map { $_->{name} !~ m/^TEST\b/ ? $_ : () } @CHOICES;
    } else {
-      die "$0: *** no 'is_restoration' key in the DB ***\n";
+      @choices = map { $_->{name} =~ m/^TEST\b/ ? $_ : () } @CHOICES;
    }
 
-   # build the command
+   # get the data
+   my ($source, $target, $bpd) = ask_data_to_user(@choices);
+   return unless $source and $target;
 
-   my @rsync_opts = get_rsync_options(
-      $source, $target, $DATA{$backup_name}->{bpd});
+   my $timestamp = strftime("%Y%m%d_%H%M%S", gmtime);
+
+   # build the command
+   my @rsync_options = build_rsync_options($source, $target, $bpd, $timestamp);
+   return unless @rsync_options;
 
    # print summary
 
-   print '-'x80, "\n";
-   print 
-      "Summary (check SOURCE, TARGET and BPD):\n"
-      ."   Source:  $source\n"
-      ."   Target:  $target\n"
-      ."   Command: rsync @rsync_opts\n"
-      ."   Note: No $source/.* files or dirs will be saved!\n";
-   print '-'x80, "\n";
+   while (1) {
+      print '-'x80, "\n";
+      print 
+         "Summary (check SOURCE, TARGET and BPD):\n"
+         ."   \033[1;37mSource:\033[0m  $source\n"
+         ."   \033[1;37mTarget:\033[0m  $target\n"
+         ."   \033[1;37mUse BPD:\033[0m ".($bpd ? 'yes' : 'no')."\n"
+         ."   \033[1;37mCommand:\033[0m rsync @rsync_options\n"
+         ."   \033[1;37mNote:\033[0m No $source/.* files or dirs will be saved!\n";
+      print '-'x80, "\n";
+      print "Do you want to continue (last chance to stop) [y/n]? ";
+      my $buf = <STDIN>;
+      if ($buf =~ m/^\s*+y\s*+$/) {
+         print "Ready to go.\n";
+         last;
+      } elsif ($buf =~ m/^\s*+n\s*+$/) {
+         print "Aborted on user request.\n";
+         return;
+      }
+      print "Invalid answer.  Try again.\n";
+   }
 
-   # ask confirmation
-
-   return unless ask_for_confirmation();
+   print "Enter some message for the log (home, library...): ";
+   my $msg = <STDIN>;
+   chomp $msg;
+   write_log($LOG_FILE, $timestamp, $source, $target, $msg, @rsync_options);
 
    # run the command
-
    print "Running the command...\n";
+   system('rsync', @rsync_options)
+      and die "$0: *** error when running rsync ***\n$!";
 
-   system('rsync', @rsync_opts)
-      and die "$0: *** error when running rsync ***\n$!"
+   write_log($LOG_FILE);
 
 }
 
