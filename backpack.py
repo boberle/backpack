@@ -128,16 +128,18 @@ class BackupItem():
     def prepare(self, reftime=None):
         # must sync?
         if self.source_exists:
-            directory = os.path.join(self.remote_base_dir, self.basename)
+            directory = os.path.join(self.target, self.basename)
+            target_exists = True
             if not os.path.exists(directory):
-                print("\033[31;1mWarning: The dir `%s' doesn't exist.\033[0m"
-                    % directory)
+                print("\033[31;1mWarning: The target directory `%s' doesn't "
+                    "exist.\033[0m" % directory)
+                target_exists = False
             if reftime:
                 if self.has_changed(reftime):
                     self._ready_for_sync = confirm("Do you want to save "
                         "`\033[33;1m%s\033[0m' (`%s'), "
                         "which has \033[33;1mchanged\033[0m [Y/n]? " %
-                        (self.name, self.source), True)
+                        (self.name, self.source), True and target_exists)
                 else:
                     self._ready_for_sync = confirm("Do you want to save "
                         "`\033[33;1m%s\033[0m' (`%s'), "
@@ -156,7 +158,8 @@ class BackupItem():
             if self.advise_bpd:
                 self._use_bpd = True
             else:
-                self._use_bpd = confirm("Do you want to use BPD [y/n]? ")
+                self._use_bpd = confirm("Do you want to use BPD [y/n]? ",
+                    False)
 
 class RsyncLauncher():
     default_args = (
