@@ -83,12 +83,12 @@ def print_in_yellow(msg):
 def ask_for_direction():
     while True:
         buf = input("Choose direction [l = to local, r = to remote, quit]: ")
-        buf = buf.strip()
+        buf = buf.strip().lower()
         if buf == 'l':
             while True:
                 print("\033[1;31m"+ASCII_TO_LOCAL+"\033[0m")
                 buf = input("Type `erase local data' to confirm (or quit): ")
-                buf = buf.strip()
+                buf = buf.strip().lower()
                 if buf == 'erase local data':
                     return TO_LOCAL
                 elif buf == 'quit':
@@ -98,7 +98,7 @@ def ask_for_direction():
             while True:
                 print("\033[1;32m"+ASCII_TO_REMOTE+"\033[0m")
                 buf = input("Is this correct [y/n]? ")
-                buf = buf.strip()
+                buf = buf.strip().lower()
                 if buf == 'y':
                     return TO_REMOTE
                 elif buf == 'quit' or buf == 'n':
@@ -379,9 +379,15 @@ if __name__ == '__main__':
                 md5_yes if item.parse_rsync_log else md5_no))
         else:
             print("- \033[1;31m%s\033[0m (not synchronized)" % (item.source_dir))
-    if not confirm("Are you ok [Y/n]? ", True):
-        print("You're not ok. Nothing done!")
-        sys.exit(0)
+    while True:
+        buf = input("Are you ok (type `ok' or `q[uit]')? ")
+        buf = buf.lower().strip()
+        if buf == "ok":
+            break
+        elif buf in ("q", "quit"):
+            print("You're not ok. Nothing done!")
+            sys.exit(0)
+        print("I don't understand. Try again.")
 
     for item in items:
         if item.ok_to_synchronize:
