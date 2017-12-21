@@ -28,6 +28,9 @@ else:
         Data('/media/bruno/storage/big_01_important', False),
         Data('/media/bruno/storage/big_02_useful', False),
         Data('/media/bruno/storage/big_03_less_useful', False),
+        Data('/media/bruno/storage/big_04_stock_library', False),
+        Data('/media/bruno/storage/big_05_media_ok', False),
+        Data('/media/bruno/storage/big_06_media_less_ok', False),
     ]
 
 
