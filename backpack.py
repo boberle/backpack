@@ -25,12 +25,14 @@ else:
         Data('/home/papps', False),
         Data('/home/playground', False),
         Data('/home/TODO', False),
-        Data('/media/bruno/storage/big_01_important', False),
-        Data('/media/bruno/storage/big_02_useful', False),
-        Data('/media/bruno/storage/big_03_less_useful', False),
-        Data('/media/bruno/storage/big_04_stock_library', False),
-        Data('/media/bruno/storage/big_05_media_ok', False),
-        Data('/media/bruno/storage/big_06_media_less_ok', False),
+        #Data('/media/bruno/storage/big_01_important', False),
+        #Data('/media/bruno/storage/big_02_useful', False),
+        #Data('/media/bruno/storage/big_03_less_useful', False),
+        #Data('/media/bruno/storage/big_04_stock_library', False),
+        #Data('/media/bruno/storage/big_05_media_ok', False),
+        #Data('/media/bruno/storage/big_06_media_less_ok', False),
+        Data('/media/bruno/storage/working1', False),
+        Data('/media/bruno/storage/random1', False),
     ]
 
 
