@@ -33,6 +33,8 @@ else:
         #Data('/media/bruno/storage/big_06_media_less_ok', False),
         Data('/media/bruno/storage/working1', False),
         Data('/media/bruno/storage/random1', False),
+        Data('/var/www', True),
+        Data('/var/lib/mysql', True),
     ]
 
 
